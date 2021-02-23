@@ -304,20 +304,19 @@ export const queryRequestErrors = ( state = {}, action ) => {
 	return state;
 };
 
-function applyToManager( state, siteId, method, createDefault, ...args ) {
-	if ( ! state[ siteId ] ) {
-		if ( ! createDefault ) {
-			return state;
-		}
-
-		return {
-			...state,
-			[ siteId ]: new ThemeQueryManager( null, { itemKey: 'id' } )[ method ]( ...args ),
-		};
+function withManager( state, siteId, createDefault, callback ) {
+	if ( ! siteId ) {
+		return state;
 	}
 
-	const nextManager = state[ siteId ][ method ]( ...args );
-	if ( nextManager === state[ siteId ] ) {
+	if ( ! state[ siteId ] && ! createDefault ) {
+		return state;
+	}
+
+	const prevManager = state[ siteId ] || createDefault();
+
+	const nextManager = callback( prevManager );
+	if ( nextManager === prevManager ) {
 		return state;
 	}
 
@@ -352,20 +351,18 @@ const queriesReducer = ( state = {}, action ) => {
 	switch ( action.type ) {
 		case THEMES_REQUEST_SUCCESS: {
 			const { siteId, query, themes, found } = action;
-			return applyToManager(
+			return withManager(
 				// Always 'patch' to avoid overwriting existing fields when receiving
 				// from a less rich endpoint such as /mine
 				state,
 				siteId,
-				'receive',
-				true,
-				map( themes, fromApi ),
-				{ query, found, patch: true }
+				() => new ThemeQueryManager( null, { itemKey: 'id' } ),
+				( manager ) => manager.receive( map( themes, fromApi ), { query, found, patch: true } )
 			);
 		}
 		case THEME_DELETE_SUCCESS: {
 			const { siteId, themeId } = action;
-			return applyToManager( state, siteId, 'removeItem', false, themeId );
+			return withManager( state, siteId, false, ( manager ) => manager.removeItem( themeId ) );
 		}
 	}
 
