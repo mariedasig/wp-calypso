@@ -2,7 +2,7 @@
  * External dependencies
  */
 import React from 'react';
-import type { FunctionComponent, ReactNode } from 'react';
+import type { ReactNode } from 'react';
 import Modal from 'react-modal';
 import classnames from 'classnames';
 import config from '@automattic/calypso-config';
@@ -20,7 +20,6 @@ import './style.scss';
 
 type Props = {
 	additionalClassNames: Parameters< typeof classnames >[ 0 ];
-	autoFocus: boolean;
 	baseClassName: string;
 	buttons: Button[];
 	className: string;
@@ -34,20 +33,20 @@ type Props = {
 	shouldCloseOnEsc: boolean;
 };
 
-const Dialog: FunctionComponent< Props > = ( {
+const Dialog = ( {
 	additionalClassNames,
 	buttons,
-	baseClassName,
+	baseClassName = 'dialog',
 	className,
 	children,
-	isBackdropVisible,
-	isFullScreen,
-	isVisible,
-	label,
-	leaveTimeout,
+	isBackdropVisible = true,
+	isFullScreen = true,
+	isVisible = false,
+	label = '',
+	leaveTimeout = 200,
 	onClose,
 	shouldCloseOnEsc,
-} ) => {
+}: Props ): JSX.Element => {
 	const close = React.useCallback( () => onClose?.(), [ onClose ] );
 	const onButtonClick = React.useCallback(
 		( button: BaseButton ) => {
@@ -93,16 +92,6 @@ const Dialog: FunctionComponent< Props > = ( {
 			/>
 		</Modal>
 	);
-};
-
-Dialog.defaultProps = {
-	autoFocus: true,
-	baseClassName: 'dialog',
-	isBackdropVisible: true,
-	isFullScreen: true,
-	isVisible: false,
-	label: '',
-	leaveTimeout: 200,
 };
 
 export default Dialog;
