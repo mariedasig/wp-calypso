@@ -7,7 +7,7 @@ import deepFreeze from 'deep-freeze';
  * Internal dependencies
  */
 import { withStorageKey } from '@automattic/state-utils';
-import { APPLY_STORED_STATE, DESERIALIZE, SERIALIZE } from 'calypso/state/action-types';
+import { APPLY_STORED_STATE } from 'calypso/state/action-types';
 import {
 	extendAction,
 	keyedReducer,
@@ -308,7 +308,7 @@ describe( 'utils', () => {
 
 			// state with non-initial value
 			const state = { 1: 1 };
-			const serialized = keyed( state, { type: 'SERIALIZE' } );
+			const serialized = serialize( keyed, state );
 			expect( serialized.root() ).toEqual( { 1: 1 } );
 		} );
 
@@ -363,7 +363,6 @@ describe( 'utils', () => {
 	} );
 
 	describe( '#withSchemaValidation', () => {
-		const load = { type: DESERIALIZE };
 		const normal = { type: 'NORMAL' };
 		const grow = { type: 'GROW' };
 		const schema = {
@@ -395,22 +394,20 @@ describe( 'utils', () => {
 			expect( deserialize( date, 0 ) ).toEqual( new Date( 0 ) );
 		} );
 
-		test( 'should invalidate DESERIALIZED state', () => {
+		test( 'should invalidate on deserialize call', () => {
 			const validated = withSchemaValidation( schema, age );
-
-			expect( validated( -5, load ) ).toBe( 0 );
+			expect( deserialize( validated, -5 ) ).toBe( 0 );
 		} );
 
-		test( 'should not invalidate normal state', () => {
+		test( 'should not invalidate on normal action dispatch', () => {
 			const validated = withSchemaValidation( schema, age );
-
 			expect( validated( -5, normal ) ).toBe( -5 );
 		} );
 
 		test( 'should validate initial state', () => {
 			const validated = withSchemaValidation( schema, age );
 
-			expect( validated( 5, load ) ).toBe( 5 );
+			expect( deserialize( validated, 5 ) ).toBe( 5 );
 		} );
 
 		test( 'actions work as expected with schema', () => {
@@ -420,8 +417,6 @@ describe( 'utils', () => {
 	} );
 
 	describe( '#combineReducers', () => {
-		const load = { type: DESERIALIZE };
-		const write = { type: SERIALIZE };
 		const grow = { type: 'GROW' };
 		const schema = {
 			type: 'number',
@@ -434,22 +429,25 @@ describe( 'utils', () => {
 		const height = ( state = 160, action ) => ( 'GROW' === action.type ? state + 1 : state );
 		const count = ( state = 1, action ) => ( 'GROW' === action.type ? state + 1 : state );
 
-		const date = ( state = new Date( 0 ), action ) => {
-			switch ( action.type ) {
-				case 'GROW':
-					return new Date( state.getTime() + 1 );
-				case SERIALIZE:
-					return state.getTime();
-				case DESERIALIZE:
-					if ( isValidStateWithSchema( state, schema ) ) {
-						return new Date( state );
+		const date = withPersistence(
+			( state = new Date( 0 ), action ) => {
+				switch ( action.type ) {
+					case 'GROW':
+						return new Date( state.getTime() + 1 );
+					default:
+						return state;
+				}
+			},
+			{
+				serialize: ( state ) => state.getTime(),
+				deserialize: ( persisted ) => {
+					if ( isValidStateWithSchema( persisted, schema ) ) {
+						return new Date( persisted );
 					}
 					return new Date( 0 );
-				default:
-					return state;
+				},
 			}
-		};
-		date.hasCustomPersistence = true;
+		);
 
 		let reducers;
 
@@ -470,23 +468,23 @@ describe( 'utils', () => {
 			expect( state ).toEqual( { age: 0, height: 160 } );
 		} );
 
-		test( 'should return initial state on DESERIALIZE', () => {
-			const state = reducers( undefined, load );
+		test( 'should return initial state on deserialize', () => {
+			const state = deserialize( reducers, undefined );
 			expect( state ).toEqual( { age: 0, height: 160 } );
 		} );
 
 		test( 'should not persist height, because it is missing a schema', () => {
-			const state = reducers( appState, write );
+			const state = serialize( reducers, appState );
 			expect( state.root() ).toEqual( { age: 20 } );
 		} );
 
 		test( 'should not load height, because it is missing a schema', () => {
-			const state = reducers( appState, load );
+			const state = deserialize( reducers, appState );
 			expect( state ).toEqual( { age: 20, height: 160 } );
 		} );
 
 		test( 'should validate age', () => {
-			const state = reducers( { age: -5 }, load );
+			const state = deserialize( reducers, { age: -5 } );
 			expect( state ).toEqual( { age: 0, height: 160 } );
 		} );
 
@@ -496,7 +494,7 @@ describe( 'utils', () => {
 		} );
 
 		test( 'undefined or missing state is not serialized and does not cause errors', () => {
-			const empty = reducers( undefined, write );
+			const empty = serialize( reducers, undefined );
 			expect( empty ).toBeUndefined();
 
 			const nested = combineReducers( {
@@ -504,7 +502,7 @@ describe( 'utils', () => {
 				date,
 			} );
 
-			const missingPerson = nested( { date: new Date( 100 ) }, write );
+			const missingPerson = serialize( nested, { date: new Date( 100 ) } );
 			expect( missingPerson.root() ).toEqual( { date: 100 } );
 		} );
 
@@ -518,13 +516,13 @@ describe( 'utils', () => {
 				person: reducers,
 				count,
 			} );
-			const valid = nested( { person: { age: 22, date: 224 } }, load );
+			const valid = deserialize( nested, { person: { age: 22, date: 224 } } );
 			expect( valid ).toEqual( {
 				person: { age: 22, height: 160, date: new Date( 224 ) },
 				count: 1,
 			} );
 
-			const invalid = nested( { person: { age: -5, height: 100, date: -5 } }, load );
+			const invalid = deserialize( nested, { person: { age: -5, height: 100, date: -5 } } );
 			expect( invalid ).toEqual( {
 				person: { age: 0, height: 160, date: new Date( 0 ) },
 				count: 1,
@@ -541,10 +539,12 @@ describe( 'utils', () => {
 				person: reducers,
 				count,
 			} );
-			const valid = nested( { person: { age: 22, date: new Date( 224 ) } }, write );
+			const valid = serialize( nested, { person: { age: 22, date: new Date( 224 ) } } );
 			expect( valid.root() ).toEqual( { person: { age: 22, date: 224 } } );
 
-			const invalid = nested( { person: { age: -5, height: 100, date: new Date( -500 ) } }, write );
+			const invalid = serialize( nested, {
+				person: { age: -5, height: 100, date: new Date( -500 ) },
+			} );
 			expect( invalid.root() ).toEqual( { person: { age: -5, date: -500 } } );
 		} );
 
@@ -559,15 +559,12 @@ describe( 'utils', () => {
 				age,
 			} );
 
-			const stored = nestedEphemeral(
-				{
-					// the `ephemeral` object should not be stored at all
-					ephemeral: { height: 100, count: 5 },
-					// `age` should be persisted, as it has a schema defined
-					age: 40,
-				},
-				write
-			);
+			const stored = serialize( nestedEphemeral, {
+				// the `ephemeral` object should not be stored at all
+				ephemeral: { height: 100, count: 5 },
+				// `age` should be persisted, as it has a schema defined
+				age: 40,
+			} );
 			expect( stored.root() ).toEqual( { age: 40 } );
 		} );
 
@@ -584,16 +581,19 @@ describe( 'utils', () => {
 				bob: nested,
 				count,
 			} );
-			const valid = veryNested( { bob: { person: { age: 22, date: 224 } }, count: 122 }, load );
+			const valid = deserialize( veryNested, {
+				bob: { person: { age: 22, date: 224 } },
+				count: 122,
+			} );
 			expect( valid ).toEqual( {
 				bob: { person: { age: 22, height: 160, date: new Date( 224 ) } },
 				count: 1,
 			} );
 
-			const invalid = veryNested(
-				{ bob: { person: { age: -5, height: 22, date: -500 } }, count: 123 },
-				load
-			);
+			const invalid = deserialize( veryNested, {
+				bob: { person: { age: -5, height: 22, date: -500 } },
+				count: 123,
+			} );
 			expect( invalid ).toEqual( {
 				bob: { person: { age: 0, height: 160, date: new Date( 0 ) } },
 				count: 1,
@@ -613,16 +613,16 @@ describe( 'utils', () => {
 				bob: nested,
 				count,
 			} );
-			const valid = veryNested(
-				{ bob: { person: { age: 22, date: new Date( 234 ) } }, count: 122 },
-				write
-			);
+			const valid = serialize( veryNested, {
+				bob: { person: { age: 22, date: new Date( 234 ) } },
+				count: 122,
+			} );
 			expect( valid.root() ).toEqual( { bob: { person: { age: 22, date: 234 } } } );
 
-			const invalid = veryNested(
-				{ bob: { person: { age: -5, height: 22, date: new Date( -5 ) } }, count: 123 },
-				write
-			);
+			const invalid = serialize( veryNested, {
+				bob: { person: { age: -5, height: 22, date: new Date( -5 ) } },
+				count: 123,
+			} );
 			expect( invalid.root() ).toEqual( { bob: { person: { age: -5, date: -5 } } } );
 		} );
 
@@ -638,13 +638,16 @@ describe( 'utils', () => {
 				bob: nested,
 				count,
 			} );
-			const valid = veryNested( { bob: { person: { date: new Date( 234 ) } }, count: 122 }, write );
+			const valid = serialize( veryNested, {
+				bob: { person: { date: new Date( 234 ) } },
+				count: 122,
+			} );
 			expect( valid.root() ).toEqual( { bob: { person: { date: 234 } } } );
 
-			const invalid = veryNested(
-				{ bob: { person: { height: 22, date: new Date( -5 ) } }, count: 123 },
-				write
-			);
+			const invalid = serialize( veryNested, {
+				bob: { person: { height: 22, date: new Date( -5 ) } },
+				count: 123,
+			} );
 			expect( invalid.root() ).toEqual( { bob: { person: { date: -5 } } } );
 		} );
 
@@ -654,10 +657,10 @@ describe( 'utils', () => {
 				count,
 			} );
 
-			const valid = reducers( { height: 22, count: 44 }, write );
+			const valid = serialize( reducers, { height: 22, count: 44 } );
 			expect( valid.root() ).toEqual( { height: 22 } );
 
-			const invalid = reducers( { height: -1, count: 44 }, load );
+			const invalid = deserialize( reducers, { height: -1, count: 44 } );
 			expect( invalid ).toEqual( { height: 160, count: 1 } );
 		} );
 	} );
@@ -668,16 +671,11 @@ describe( 'utils', () => {
 				return state + 1;
 			}
 
-			if ( DESERIALIZE === type ) {
-				return state.age;
-			}
-
-			if ( SERIALIZE === type ) {
-				return { age: state };
-			}
-
 			return state;
 		};
+		age.serialize = ( state ) => ( { age: state } );
+		age.deserialize = ( persisted ) => persisted.age;
+
 		let wrapped;
 
 		beforeAll( () => ( wrapped = withoutPersistence( age ) ) );
@@ -687,12 +685,12 @@ describe( 'utils', () => {
 			expect( wrapped( 10, { type: 'FADE' } ) ).toBe( 10 );
 		} );
 
-		test( 'should DESERIALIZE to `initialState`', () => {
-			expect( wrapped( 10, { type: DESERIALIZE } ) ).toBe( 0 );
+		test( 'should deserialize to initial state', () => {
+			expect( deserialize( wrapped, 10 ) ).toBe( 0 );
 		} );
 
-		test( 'should SERIALIZE to `undefined`', () => {
-			expect( wrapped( 10, { type: SERIALIZE } ) ).toBeUndefined();
+		test( 'should serialize to `undefined`', () => {
+			expect( serialize( wrapped, 10 ) ).toBeUndefined();
 		} );
 	} );
 
@@ -857,7 +855,7 @@ describe( 'addReducer', () => {
 			);
 
 			const state = newReducer( undefined, { type: 'INIT' } );
-			const serializedState = newReducer( state, { type: 'SERIALIZE' } );
+			const serializedState = serialize( newReducer, state );
 
 			expect( serializedState.get() ).toEqual( {
 				keyA: {
@@ -890,7 +888,7 @@ describe( 'withStorageKey', () => {
 		const state = reducer( undefined, { type: 'INIT' } );
 
 		// and serialize
-		const result = reducer( state, { type: 'SERIALIZE' } );
+		const result = serialize( reducer, state );
 
 		expect( result.get() ).toEqual( {
 			root: { posts: 'postsState' },
@@ -901,11 +899,7 @@ describe( 'withStorageKey', () => {
 
 describe( 'applyStoredState', () => {
 	// factory to manufacture toy reducers with custom persistence
-	const toyReducer = () => {
-		const r = ( state = null ) => state;
-		r.hasCustomPersistence = true;
-		return r;
-	};
+	const toyReducer = () => withPersistence( ( state = null ) => state );
 
 	test( 'stored state is correctly implanted into the right location', () => {
 		const reducer = combineReducers( {
