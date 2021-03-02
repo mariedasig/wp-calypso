@@ -11,7 +11,10 @@ import { CONTACT, GSUITE_LEARNING_CENTER } from 'calypso/lib/url/support';
 import PurchaseDetail from 'calypso/components/purchase-detail';
 import { useSelector } from 'react-redux';
 import { getCurrentUserEmail } from 'calypso/state/current-user/selectors';
-import { isGSuiteOrExtraLicenseOrGoogleWorkspace } from 'calypso/lib/products-values';
+import {
+	isGoogleWorkspace,
+	isGSuiteOrExtraLicenseOrGoogleWorkspace,
+} from 'calypso/lib/products-values';
 import { getGoogleMailServiceFamily, isGSuiteExtraLicenseProductSlug } from 'calypso/lib/gsuite';
 
 const GoogleAppsDetails = ( { purchases } ) => {
@@ -21,7 +24,12 @@ const GoogleAppsDetails = ( { purchases } ) => {
 	const productName = purchase.productName;
 	const productFamily = getGoogleMailServiceFamily( purchase.productSlug );
 
-	if ( isGSuiteExtraLicenseProductSlug( purchase.productSlug ) ) {
+	console.log( purchase );
+
+	// TODO: Check if G Suite is with us
+	const isGoogleWorkspaceExtraLicense = isGoogleWorkspace( purchase.productSlug );
+
+	if ( isGoogleWorkspaceExtraLicense || isGSuiteExtraLicenseProductSlug( purchase.productSlug ) ) {
 		return (
 			<PurchaseDetail
 				icon="mail"
@@ -29,7 +37,7 @@ const GoogleAppsDetails = ( { purchases } ) => {
 					'Keep an eye on your email to finish setting up your new email addresses'
 				) }
 				description={ i18n.translate(
-					'We are setting up your new G Suite users but {{strong}}this process can take several minutes' +
+					'We are setting up your new %(productFamily)s users but {{strong}}this process can take several minutes' +
 						'{{/strong}}. We will email you at %(email)s with login information once they are ready but if ' +
 						"you still haven't received anything after a few hours, do not hesitate to {{link}}contact support{{/link}}.",
 					{
@@ -46,6 +54,7 @@ const GoogleAppsDetails = ( { purchases } ) => {
 						},
 						args: {
 							email,
+							productFamily,
 						},
 					}
 				) }
