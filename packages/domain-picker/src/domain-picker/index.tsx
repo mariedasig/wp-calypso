@@ -2,7 +2,6 @@
  * External dependencies
  */
 import React, { FunctionComponent, useState, useEffect, Fragment } from 'react';
-import { useSelect } from '@wordpress/data';
 import { noop, times } from 'lodash';
 import { Button, TextControl, Notice } from '@wordpress/components';
 import { Icon, search } from '@wordpress/icons';
@@ -26,12 +25,12 @@ import DomainCategories from '../domain-categories';
 import {
 	PAID_DOMAINS_TO_SHOW,
 	PAID_DOMAINS_TO_SHOW_EXPANDED,
-	DOMAIN_SUGGESTIONS_STORE,
 	domainIsAvailableStatus,
 } from '../constants';
 import { DomainNameExplanationImage } from '../domain-name-explanation/';
 import { ITEM_TYPE_RADIO } from './suggestion-item';
 import type { SUGGESTION_ITEM_TYPE } from './suggestion-item';
+import { getDomainSuggestionsVendor } from '../utils';
 
 /**
  * Style dependencies
@@ -114,6 +113,9 @@ export interface Props {
 
 	/** Callback for when a user clicks "Use a domain I own" item */
 	onUseYourDomainClick?: () => void;
+
+	/** Vendor string for domain suggestionts */
+	vendor?: string;
 }
 
 const DomainPicker: FunctionComponent< Props > = ( {
@@ -138,6 +140,7 @@ const DomainPicker: FunctionComponent< Props > = ( {
 	areDependenciesLoading = false,
 	orderSubDomainsLast = false,
 	onUseYourDomainClick,
+	vendor,
 } ) => {
 	const { __ } = useI18n();
 	const label = __( 'Search for a domain', __i18n_text_domain__ );
@@ -147,9 +150,8 @@ const DomainPicker: FunctionComponent< Props > = ( {
 	const [ domainSearch, setDomainSearch ] = useState< string >( initialDomainSearch );
 	const [ domainCategory, setDomainCategory ] = useState< string | undefined >();
 
-	const domainSuggestionVendor = useSelect( ( select ) =>
-		select( DOMAIN_SUGGESTIONS_STORE ).getDomainSuggestionVendor()
-	);
+	// If no vendor given, get default vendor.
+	const domainSuggestionVendor = vendor || getDomainSuggestionsVendor();
 
 	const {
 		allDomainSuggestions,
